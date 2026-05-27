@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pacific Heights Parking Guide</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --ink: #202124;
+      --muted: #636a70;
+      --line: #d9dee5;
+      --panel: #ffffff;
+      --green: #157f58;
+      --green-soft: #e6f4ee;
+      --amber-soft: #fff3d7;
+      --teal: #176d7a;
+      --teal-soft: #e2f2f4;
+      --shadow: 0 14px 30px rgba(27, 35, 45, 0.09);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1220px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 44px;
+    }
+
+    header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--teal);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 850px;
+      font-size: clamp(2rem, 4vw, 4.25rem);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    header p:last-child {
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin-bottom: 0;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      min-width: 180px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    select {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.98rem;
+      font-weight: 650;
+      padding: 0 36px 0 12px;
+    }
+
+    .source-note {
+      flex: 1 1 280px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .source-note a {
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      min-height: 610px;
+      height: min(72vh, 720px);
+    }
+
+    .map-footer,
+    .side-section {
+      padding: 16px;
+    }
+
+    .map-footer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      border-top: 1px solid var(--line);
+    }
+
+    .legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 650;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .dot.green { background: var(--green); }
+
+    .side {
+      display: grid;
+      gap: 18px;
+    }
+
+    .side-section + .side-section {
+      border-top: 1px solid var(--line);
+    }
+
+    .side-section h2 {
+      margin-bottom: 8px;
+      font-size: 1.15rem;
+    }
+
+    .side-section p {
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .ranked-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .block-row {
+      display: grid;
+      gap: 3px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .block-row.prime {
+      border-color: rgba(21, 127, 88, 0.32);
+      background: var(--green-soft);
+    }
+
+    .row-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .row-title span:last-child {
+      white-space: nowrap;
+      color: var(--muted);
+      font-weight: 750;
+      font-size: 0.9rem;
+    }
+
+    .row-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .status {
+      width: fit-content;
+      max-width: 100%;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .status.prime { color: var(--green); background: rgba(21, 127, 88, 0.12); }
+
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(190px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .day-card {
+      display: grid;
+      gap: 10px;
+      min-height: 260px;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .day-card.selected {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(23, 109, 122, 0.15), var(--shadow);
+    }
+
+    .day-card h3 {
+      margin-bottom: 0;
+      font-size: 1.05rem;
+    }
+
+    .day-card button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--teal);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .day-card button:hover {
+      border-color: var(--teal);
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .mini-list li {
+      padding: 8px;
+      border-radius: 7px;
+      background: #f3f6f8;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .mini-list strong {
+      display: block;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 10px;
+      border-radius: 7px;
+      background: #f3f6f8;
+    }
+
+    .callout {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid rgba(169, 104, 0, 0.28);
+      border-radius: 8px;
+      background: var(--amber-soft);
+      color: #5e430b;
+    }
+
+    .callout p {
+      margin-bottom: 0;
+    }
+
+    .leaflet-popup-content {
+      min-width: 220px;
+      margin: 13px 16px;
+      font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .popup-title {
+      margin-bottom: 6px;
+      font-weight: 850;
+      color: var(--ink);
+    }
+
+    .popup-meta {
+      color: var(--muted);
+    }
+
+    .curb-marker {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      width: 32px;
+      height: 32px;
+      border: 2px solid #157f58;
+      border-radius: 50%;
+      background: #ffffff;
+      color: #0d5f42;
+      font: 900 21px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 2px 8px rgba(27, 35, 45, 0.18);
+    }
+
+    .curb-marker span {
+      line-height: 1;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      #map {
+        min-height: 520px;
+        height: 62vh;
+      }
+
+      .calendar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 620px) {
+      main {
+        width: min(100% - 20px, 1220px);
+        padding-top: 22px;
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      label,
+      .source-note {
+        width: 100%;
+      }
+
+      #map {
+        min-height: 520px;
+      }
+
+      .calendar {
+        grid-template-columns: 1fr;
+      }
+
+      .row-title {
+        display: grid;
+      }
+
+      .row-title span:last-child {
+        white-space: normal;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      header {
+        gap: 9px;
+        margin-bottom: 18px;
+      }
+
+      header p:last-child,
+      .side-section p {
+        font-size: 0.98rem;
+      }
+
+      select {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .map-footer {
+        padding: 12px;
+      }
+
+      .legend {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .side-section {
+        padding: 14px;
+      }
+
+      .block-row {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Pacific Heights, San Francisco</p>
+      <h1>Overnight parking guide for street sweeping nights</h1>
+      <p>Pick the night you are parking. The guide shows the next morning's sweeping blocks that are most likely to be easier to grab because other drivers avoid the overnight restriction.</p>
+    </header>
+
+    <section class="toolbar" aria-label="Parking guide controls">
+      <label>
+        Parking night
+        <select id="daySelect">
+          <option value="Mon">Sunday night -> Monday morning</option>
+          <option value="Tues">Monday night -> Tuesday morning</option>
+          <option value="Wed">Tuesday night -> Wednesday morning</option>
+          <option value="Thu">Wednesday night -> Thursday morning</option>
+          <option value="Fri">Thursday night -> Friday morning</option>
+        </select>
+      </label>
+      <p class="source-note">
+        Pulls live schedules from the official
+        <a href="https://data.sfgov.org/City-Infrastructure/Street-Sweeping-Schedule/yhqp-riqs/explore" target="_blank" rel="noreferrer">DataSF Street Sweeping Schedule</a>.
+      </p>
+    </section>
+
+    <section class="layout">
+      <div class="panel">
+        <div id="map" role="img" aria-label="Annotated map of nearby street sweeping block faces"></div>
+        <div class="map-footer">
+          <span class="legend"><span class="dot green"></span> 8 a.m. or later target</span>
+        </div>
+      </div>
+
+      <aside class="panel side" aria-live="polite">
+        <section class="side-section">
+          <h2 id="selectedTitle">Best overnight targets</h2>
+          <p id="selectedSummary">Loading schedule data...</p>
+          <div id="bestList" class="ranked-list"></div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="calendar" id="calendar" aria-label="Weekday calendar view"></section>
+
+    <section class="callout">
+      <p><strong>Practical read:</strong> I did not find 7:30 a.m. sweeping starts in the city dataset; nearby signs use whole-hour starts like 6, 7, 8, 9, 10, and 12. The map now only shows green 8 a.m. or later targets: blocks that may be easier to find the night before, then require moving before the morning restriction starts.</p>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const HOME = { lat: 37.7948005, lng: -122.4254930 };
+    const SEARCH_RADIUS_M = 400;
+    const DAY_ORDER = ["Mon", "Tues", "Wed", "Thu", "Fri"];
+    const DAY_LABELS = { Mon: "Monday", Tues: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
+
+    const state = {
+      rows: [],
+      blocks: [],
+      selectedDay: "Tues",
+      map: null,
+      layers: []
+    };
+
+    const els = {
+      daySelect: document.querySelector("#daySelect"),
+      selectedTitle: document.querySelector("#selectedTitle"),
+      selectedSummary: document.querySelector("#selectedSummary"),
+      bestList: document.querySelector("#bestList"),
+      calendar: document.querySelector("#calendar")
+    };
+
+    boot();
+
+    async function boot() {
+      els.daySelect.value = state.selectedDay;
+      initMap();
+      attachEvents();
+      try {
+        state.rows = await fetchSchedules();
+        state.blocks = groupRows(state.rows);
+        fitMapToBlocks();
+        renderAll();
+      } catch (error) {
+        els.selectedSummary.textContent = "Could not load the live DataSF schedule. Check your internet connection and reopen the file.";
+        console.error(error);
+      }
+    }
+
+    function initMap() {
+      state.map = L.map("map", { scrollWheelZoom: true }).setView([HOME.lat, HOME.lng], 17);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 20,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(state.map);
+
+      L.circleMarker([HOME.lat, HOME.lng], {
+        radius: 8,
+        color: "#202124",
+        weight: 2,
+        fillColor: "#ffffff",
+        fillOpacity: 1
+      })
+        .bindPopup("<div class='popup-title'>Reference point</div><div class='popup-meta'>Used for rough walking distances.</div>")
+        .addTo(state.map);
+    }
+
+    function attachEvents() {
+      els.daySelect.addEventListener("change", event => {
+        state.selectedDay = event.target.value;
+        renderAll();
+      });
+    }
+
+    async function fetchSchedules() {
+      const params = new URLSearchParams({
+        "$where": `within_circle(line, ${HOME.lat}, ${HOME.lng}, ${SEARCH_RADIUS_M})`,
+        "$select": "cnn,corridor,limits,blockside,fullname,weekday,fromhour,tohour,week1,week2,week3,week4,week5,blocksweepid,line",
+        "$limit": "5000"
+      });
+      const response = await fetch(`https://data.sfgov.org/resource/yhqp-riqs.json?${params}`);
+      if (!response.ok) {
+        throw new Error(`DataSF returned ${response.status}`);
+      }
+      const rows = await response.json();
+      return rows.filter(row => DAY_ORDER.includes(row.weekday) && row.line && row.line.coordinates);
+    }
+
+    function groupRows(rows) {
+      const groups = new Map();
+      rows.forEach(row => {
+        const key = [row.cnn, row.corridor, row.limits, row.blockside].join("|");
+        if (!groups.has(key)) {
+          groups.set(key, {
+            key,
+            cnn: row.cnn,
+            corridor: row.corridor,
+            limits: row.limits,
+            blockside: row.blockside,
+            line: row.line,
+            rows: [],
+            distanceM: distanceToLine(row.line.coordinates)
+          });
+        }
+        groups.get(key).rows.push(row);
+      });
+
+      return Array.from(groups.values())
+        .sort((a, b) => a.distanceM - b.distanceM || labelBlock(a).localeCompare(labelBlock(b)));
+    }
+
+    function renderAll() {
+      if (!state.blocks.length) return;
+      renderMap();
+      renderSidebar();
+      renderCalendar();
+    }
+
+    function renderMap() {
+      state.layers.forEach(layer => state.map.removeLayer(layer));
+      state.layers = [];
+
+      const targetItems = state.blocks
+        .map(block => ({ block, status: classifyBlock(block, state.selectedDay) }))
+        .filter(item => item.status.kind === "prime")
+        .sort(rankTarget);
+
+      targetItems.forEach((item, index) => {
+        const { block, status } = item;
+        const offsetCoordinates = offsetLineToCurb(block.line.coordinates, block.blockside, 8);
+        const latLngs = toLatLngs(offsetCoordinates);
+        const casing = L.polyline(latLngs, {
+          color: "#ffffff",
+          opacity: 1,
+          weight: 12,
+          lineCap: "butt",
+          lineJoin: "round",
+          smoothFactor: 0
+        });
+        const layer = L.polyline(latLngs, {
+          color: colorForStatus(status.kind),
+          opacity: 1,
+          weight: 8,
+          lineCap: "butt",
+          lineJoin: "round",
+          smoothFactor: 0
+        });
+        casing.bindPopup(renderPopup(block, status));
+        layer.bindPopup(renderPopup(block, status));
+        casing.addTo(state.map);
+        layer.addTo(state.map);
+        state.layers.push(casing, layer);
+
+        if (index < 12) {
+          const marker = L.marker(lineMidpoint(offsetCoordinates), {
+            icon: L.divIcon({
+              className: "",
+              html: `<div class="curb-marker" title="${sideShortLabel(block.blockside)}"><span>${sideArrow(block.blockside)}</span></div>`,
+              iconAnchor: [16, 16]
+            }),
+            interactive: false
+          });
+          marker.addTo(state.map);
+          state.layers.push(marker);
+        }
+      });
+    }
+
+    function renderSidebar() {
+      const day = state.selectedDay;
+      const classified = state.blocks.map(block => ({ block, status: classifyBlock(block, day) }));
+      const targets = classified
+        .filter(item => item.status.kind === "prime")
+        .sort(rankTarget)
+        .slice(0, 10);
+
+      els.selectedTitle.textContent = `Best targets for ${nightLabel(day)}`;
+      els.selectedSummary.textContent = `${nightLabel(day)} uses ${DAY_LABELS[day]} morning sweeping. Green means the block has sweeping at 8 a.m. or later, which may make it easier to find an open overnight spot if you can move before the sign starts.`;
+      els.bestList.innerHTML = targets.length
+        ? targets.map(item => blockRow(item.block, item.status)).join("")
+        : "<div class='empty'>No nearby 8 a.m. or later sweeping targets found for this night.</div>";
+    }
+
+    function renderCalendar() {
+      els.calendar.innerHTML = DAY_ORDER.map(day => {
+        const classified = state.blocks.map(block => ({ block, status: classifyBlock(block, day) }));
+        const targets = classified
+        .filter(item => item.status.kind === "prime")
+          .sort(rankTarget)
+          .slice(0, 4);
+        const selected = day === state.selectedDay ? " selected" : "";
+        return `
+          <article class="day-card${selected}">
+            <h3>${nightLabel(day)}</h3>
+            <button type="button" data-day="${day}">Show on map</button>
+            <div>
+              <span class="status prime">8+ a.m. targets</span>
+              ${targets.length ? `<ul class="mini-list">${targets.map(item => miniItem(item.block, item.status)).join("")}</ul>` : "<div class='empty'>No 8 a.m. or later targets nearby.</div>"}
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      els.calendar.querySelectorAll("button[data-day]").forEach(button => {
+        button.addEventListener("click", () => {
+          state.selectedDay = button.dataset.day;
+          els.daySelect.value = state.selectedDay;
+          renderAll();
+          document.querySelector("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+    }
+
+    function blockRow(block, status) {
+      return `
+        <article class="block-row ${status.kind}">
+          <div class="row-title">
+            <span>${labelBlock(block)}</span>
+            <span>${formatDistance(block.distanceM)}</span>
+          </div>
+          <div class="row-meta">${block.blockside} side</div>
+          <span class="status ${status.kind}">${status.label}</span>
+          <div class="row-meta">${status.detail}</div>
+          <div class="row-meta">${fullSchedule(block)}</div>
+        </article>
+      `;
+    }
+
+    function miniItem(block, status) {
+      return `
+        <li>
+          <strong>${labelBlock(block)} - ${block.blockside}</strong>
+          ${formatDistance(block.distanceM)} - ${status.detail}
+        </li>
+      `;
+    }
+
+    function renderPopup(block, status) {
+      return `
+        <div class="popup-title">${labelBlock(block)}</div>
+        <div class="popup-meta">${block.blockside} side - ${formatDistance(block.distanceM)}</div>
+        <p><span class="status ${status.kind}">${status.label}</span></p>
+        <p>${status.detail}</p>
+        <div class="popup-meta">${fullSchedule(block)}</div>
+      `;
+    }
+
+    function classifyBlock(block, day) {
+      const todaysRows = block.rows.filter(row => row.weekday === day);
+      if (!todaysRows.length) {
+        return {
+          kind: "none",
+          label: "No sweep that morning",
+          detail: `No ${DAY_LABELS[day]} weekday sweep listed for this block face.`
+        };
+      }
+
+      const sortedRows = todaysRows
+        .slice()
+        .sort((a, b) => Number(a.fromhour) - Number(b.fromhour) || Number(a.tohour) - Number(b.tohour));
+      const detail = sortedRows.map(row => scheduleText(row)).join("; ");
+      const bestStart = Math.min(...sortedRows.filter(row => Number(row.fromhour) >= 8).map(row => Number(row.fromhour)));
+
+      if (Number.isFinite(bestStart)) {
+        return { kind: "prime", label: "8 a.m. or later target", detail: `${detail}. Move before ${formatHour(bestStart)}.` };
+      }
+      return { kind: "none", label: "No useful sweep timing", detail };
+    }
+
+    function fullSchedule(block) {
+      return block.rows
+        .slice()
+        .sort((a, b) => DAY_ORDER.indexOf(a.weekday) - DAY_ORDER.indexOf(b.weekday) || Number(a.fromhour) - Number(b.fromhour))
+        .map(scheduleText)
+        .join("; ");
+    }
+
+    function scheduleText(row) {
+      return `${row.fullname} ${formatHour(row.fromhour)}-${formatHour(row.tohour)}`;
+    }
+
+    function labelBlock(block) {
+      return `${block.corridor}, ${block.limits.replace(/\s+/g, " ")}`;
+    }
+
+    function formatHour(hourValue) {
+      const hour = Number(hourValue);
+      if (hour === 0) return "12 a.m.";
+      if (hour < 12) return `${hour} a.m.`;
+      if (hour === 12) return "12 p.m.";
+      return `${hour - 12} p.m.`;
+    }
+
+    function formatDistance(meters) {
+      const feet = Math.round(meters * 3.28084 / 10) * 10;
+      if (feet < 1000) return `${feet} ft`;
+      return `${(feet / 5280).toFixed(2)} mi`;
+    }
+
+    function colorForStatus(kind) {
+      return {
+        prime: "#157f58",
+        none: "#9aa3ad"
+      }[kind] || "#636a70";
+    }
+
+    function rankTarget(a, b) {
+      return a.block.distanceM - b.block.distanceM || startHour(a.status) - startHour(b.status);
+    }
+
+    function startHour(status) {
+      const match = status.detail.match(/ (\\d{1,2}) a\\.m\\./);
+      return match ? Number(match[1]) : 99;
+    }
+
+    function nightLabel(morningDay) {
+      return {
+        Mon: "Sunday night -> Monday morning",
+        Tues: "Monday night -> Tuesday morning",
+        Wed: "Tuesday night -> Wednesday morning",
+        Thu: "Wednesday night -> Thursday morning",
+        Fri: "Thursday night -> Friday morning"
+      }[morningDay];
+    }
+
+    function offsetLineToCurb(coordinates, blockside, meters) {
+      const offset = sideOffset(blockside, meters);
+      return coordinates.map(point => offsetPoint(point, offset));
+    }
+
+    function offsetPoint(point, offset) {
+      const lat = point[1];
+      const metersPerDegreeLat = 111320;
+      const metersPerDegreeLng = Math.cos(toRadians(lat)) * 111320;
+      return [
+        point[0] + offset.x / metersPerDegreeLng,
+        point[1] + offset.y / metersPerDegreeLat
+      ];
+    }
+
+    function sideOffset(blockside, meters) {
+      const side = blockside.toLowerCase();
+      let x = 0;
+      let y = 0;
+      if (side.includes("east")) x += 1;
+      if (side.includes("west")) x -= 1;
+      if (side.includes("north")) y += 1;
+      if (side.includes("south")) y -= 1;
+      const length = Math.hypot(x, y) || 1;
+      return { x: meters * x / length, y: meters * y / length };
+    }
+
+    function lineMidpoint(coordinates) {
+      const middle = Math.floor((coordinates.length - 1) / 2);
+      const a = coordinates[middle];
+      const b = coordinates[middle + 1] || a;
+      return [(a[1] + b[1]) / 2, (a[0] + b[0]) / 2];
+    }
+
+    function sideArrow(blockside) {
+      const side = blockside.toLowerCase();
+      if (side.includes("north") && side.includes("east")) return "↗";
+      if (side.includes("north") && side.includes("west")) return "↖";
+      if (side.includes("south") && side.includes("east")) return "↘";
+      if (side.includes("south") && side.includes("west")) return "↙";
+      if (side.includes("east")) return "→";
+      if (side.includes("west")) return "←";
+      if (side.includes("north")) return "↑";
+      if (side.includes("south")) return "↓";
+      return "•";
+    }
+
+    function sideShortLabel(blockside) {
+      const side = blockside.toLowerCase();
+      if (side.includes("north") && side.includes("east")) return "NE side";
+      if (side.includes("north") && side.includes("west")) return "NW side";
+      if (side.includes("south") && side.includes("east")) return "SE side";
+      if (side.includes("south") && side.includes("west")) return "SW side";
+      if (side.includes("east")) return "East side";
+      if (side.includes("west")) return "West side";
+      if (side.includes("north")) return "North side";
+      if (side.includes("south")) return "South side";
+      return `${blockside} side`;
+    }
+
+    function toLatLngs(coordinates) {
+      return coordinates.map(point => [point[1], point[0]]);
+    }
+
+    function fitMapToBlocks() {
+      const allPoints = state.blocks.flatMap(block => toLatLngs(block.line.coordinates));
+      allPoints.push([HOME.lat, HOME.lng]);
+      state.map.fitBounds(L.latLngBounds(allPoints), { padding: [28, 28] });
+    }
+
+    function distanceToLine(coordinates) {
+      let min = Infinity;
+      for (let index = 0; index < coordinates.length - 1; index += 1) {
+        min = Math.min(min, distanceToSegment(coordinates[index], coordinates[index + 1]));
+      }
+      return min;
+    }
+
+    function distanceToSegment(a, b) {
+      const start = project(a[1], a[0]);
+      const end = project(b[1], b[0]);
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSq = dx * dx + dy * dy;
+      if (!lengthSq) return Math.hypot(start.x, start.y);
+      const t = Math.max(0, Math.min(1, (-(start.x) * dx + -(start.y) * dy) / lengthSq));
+      const x = start.x + t * dx;
+      const y = start.y + t * dy;
+      return Math.hypot(x, y);
+    }
+
+    function project(lat, lng) {
+      const earthRadius = 6371000;
+      const x = toRadians(lng - HOME.lng) * Math.cos(toRadians((lat + HOME.lat) / 2)) * earthRadius;
+      const y = toRadians(lat - HOME.lat) * earthRadius;
+      return { x, y };
+    }
+
+    function toRadians(value) {
+      return value * Math.PI / 180;
+    }
+
+  </script>
+</body>
+</html>
