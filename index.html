@@ -512,6 +512,7 @@
         <a href="https://data.sfgov.org/City-Infrastructure/Street-Sweeping-Schedule/yhqp-riqs/explore" target="_blank" rel="noreferrer">DataSF Street Sweeping Schedule</a>.
       </p>
       <button id="locateButton" class="map-action" type="button">Show my location</button>
+      <button id="routeButton" class="map-action" type="button" disabled>Route to best target</button>
     </section>
 
     <section class="layout">
@@ -556,12 +557,14 @@
       locationWatchId: null,
       locationMarker: null,
       accuracyCircle: null,
-      hasCenteredOnLocation: false
+      hasCenteredOnLocation: false,
+      currentLocation: null
     };
 
     const els = {
       daySelect: document.querySelector("#daySelect"),
       locateButton: document.querySelector("#locateButton"),
+      routeButton: document.querySelector("#routeButton"),
       selectedTitle: document.querySelector("#selectedTitle"),
       selectedSummary: document.querySelector("#selectedSummary"),
       bestList: document.querySelector("#bestList"),
@@ -611,6 +614,7 @@
       });
 
       els.locateButton.addEventListener("click", toggleLocationTracking);
+      els.routeButton.addEventListener("click", openBestRoute);
     }
 
     async function fetchSchedules() {
@@ -661,10 +665,7 @@
       state.layers.forEach(layer => state.map.removeLayer(layer));
       state.layers = [];
 
-      const targetItems = state.blocks
-        .map(block => ({ block, status: classifyBlock(block, state.selectedDay) }))
-        .filter(item => item.status.kind === "prime")
-        .sort(rankTarget);
+      const targetItems = getTargetItems(state.selectedDay);
 
       targetItems.forEach(item => {
         const { block, status } = item;
@@ -708,26 +709,19 @@
     function renderSidebar() {
       const day = state.selectedDay;
       const context = scheduleContext(day);
-      const classified = state.blocks.map(block => ({ block, status: classifyBlock(block, day) }));
-      const targets = classified
-        .filter(item => item.status.kind === "prime")
-        .sort(rankTarget)
-        .slice(0, 10);
+      const targets = getTargetItems(day);
 
       els.selectedTitle.textContent = `Best targets for ${nightLabel(day)}`;
       els.selectedSummary.textContent = `${DAY_LABELS[day]} morning is ${formatShortDate(context.morningDate)}, the ${ordinal(context.weekOfMonth)} ${DAY_LABELS[day]} of the month. The guide only shows sweeping rows active for that exact week.`;
       els.bestList.innerHTML = targets.length
-        ? targets.map(item => blockRow(item.block, item.status)).join("")
+        ? targets.slice(0, 10).map(item => blockRow(item.block, item.status)).join("")
         : "<div class='empty'>No nearby 8 a.m. or later sweeping targets found for this night.</div>";
+      updateRouteButton(targets[0]);
     }
 
     function renderCalendar() {
       els.calendar.innerHTML = DAY_ORDER.map(day => {
-        const classified = state.blocks.map(block => ({ block, status: classifyBlock(block, day) }));
-        const targets = classified
-        .filter(item => item.status.kind === "prime")
-          .sort(rankTarget)
-          .slice(0, 4);
+        const targets = getTargetItems(day).slice(0, 4);
         const selected = day === state.selectedDay ? " selected" : "";
         return `
           <article class="day-card${selected}">
@@ -836,7 +830,103 @@
     }
 
     function rankTarget(a, b) {
-      return a.block.distanceM - b.block.distanceM || startHour(a.status) - startHour(b.status);
+      const distanceDiff = a.block.distanceM - b.block.distanceM;
+      if (Math.abs(distanceDiff) > 30) return distanceDiff;
+      return approachPenalty(a.block) - approachPenalty(b.block) || distanceDiff || startHour(a.status) - startHour(b.status);
+    }
+
+    function getTargetItems(day) {
+      return state.blocks
+        .map(block => ({ block, status: classifyBlock(block, day) }))
+        .filter(item => item.status.kind === "prime")
+        .sort(rankTarget);
+    }
+
+    function updateRouteButton(target) {
+      if (!target) {
+        els.routeButton.disabled = true;
+        els.routeButton.textContent = "No route target";
+        return;
+      }
+      els.routeButton.disabled = false;
+      els.routeButton.textContent = "Route to best target";
+      els.routeButton.title = `${labelBlock(target.block)} - ${target.block.blockside} side`;
+    }
+
+    function openBestRoute() {
+      els.routeButton.textContent = "Choosing target...";
+      if (!("geolocation" in navigator)) {
+        routeToBestTarget();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          state.currentLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          updateLocation(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+          routeToBestTarget();
+        },
+        () => routeToBestTarget(),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 7000 }
+      );
+    }
+
+    function routeToBestTarget() {
+      const target = getTargetItems(state.selectedDay)[0];
+      if (!target) {
+        updateRouteButton(null);
+        return;
+      }
+
+      const destination = destinationForBlock(target.block);
+      const params = new URLSearchParams({
+        api: "1",
+        destination: `${destination.lat.toFixed(6)},${destination.lng.toFixed(6)}`,
+        travelmode: "driving",
+        dir_action: "navigate"
+      });
+      window.location.href = `https://www.google.com/maps/dir/?${params}`;
+    }
+
+    function destinationForBlock(block) {
+      const offsetCoordinates = offsetLineToCurb(block.line.coordinates, block.blockside, 8);
+      const midpoint = lineMidpoint(offsetCoordinates);
+      return { lat: midpoint[0], lng: midpoint[1] };
+    }
+
+    function approachPenalty(block) {
+      if (!state.currentLocation) return 0;
+      const destination = destinationForBlock(block);
+      const current = project(state.currentLocation.lat, state.currentLocation.lng);
+      const dest = project(destination.lat, destination.lng);
+      const towardDestination = normalize({ x: dest.x - current.x, y: dest.y - current.y });
+      const desired = desiredApproachVector(block);
+      if (!towardDestination || !desired) return 0;
+      return 1 - dot(towardDestination, desired);
+    }
+
+    function desiredApproachVector(block) {
+      const coordinates = block.line.coordinates;
+      const start = project(coordinates[0][1], coordinates[0][0]);
+      const end = project(coordinates[coordinates.length - 1][1], coordinates[coordinates.length - 1][0]);
+      const forward = normalize({ x: end.x - start.x, y: end.y - start.y });
+      if (!forward) return null;
+      const side = sideOffset(block.blockside, 1);
+      const rightOfForward = { x: forward.y, y: -forward.x };
+      return dot(rightOfForward, side) >= 0 ? forward : { x: -forward.x, y: -forward.y };
+    }
+
+    function normalize(vector) {
+      const length = Math.hypot(vector.x, vector.y);
+      if (!length) return null;
+      return { x: vector.x / length, y: vector.y / length };
+    }
+
+    function dot(a, b) {
+      return a.x * b.x + a.y * b.y;
     }
 
     function toggleLocationTracking() {
@@ -875,6 +965,8 @@
     }
 
     function updateLocation(lat, lng, accuracy) {
+      state.currentLocation = { lat, lng };
+      updateRouteButton(getTargetItems(state.selectedDay)[0]);
       const latLng = [lat, lng];
       if (!state.locationMarker) {
         state.locationMarker = L.circleMarker(latLng, {
