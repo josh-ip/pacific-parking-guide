@@ -111,6 +111,28 @@
       padding: 0 36px 0 12px;
     }
 
+    .map-action {
+      min-height: 42px;
+      border: 1px solid var(--teal);
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--teal);
+      font: inherit;
+      font-weight: 800;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    .map-action.active {
+      background: var(--teal-soft);
+    }
+
+    .map-action:disabled {
+      border-color: var(--line);
+      color: var(--muted);
+      cursor: default;
+    }
+
     .source-note {
       flex: 1 1 280px;
       margin: 0;
@@ -356,13 +378,13 @@
       display: inline-flex;
       justify-content: center;
       align-items: center;
-      width: 32px;
-      height: 32px;
-      border: 2px solid #157f58;
+      width: 24px;
+      height: 24px;
+      border: 1.5px solid #157f58;
       border-radius: 50%;
       background: #ffffff;
       color: #0d5f42;
-      font: 900 21px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      font: 900 15px/1 Inter, ui-sans-serif, system-ui, sans-serif;
       box-shadow: 0 2px 8px rgba(27, 35, 45, 0.18);
     }
 
@@ -435,6 +457,18 @@
         min-height: 48px;
       }
 
+      .map-action {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .curb-marker {
+        width: 18px;
+        height: 18px;
+        font-size: 12px;
+        border-width: 1px;
+      }
+
       .map-footer {
         padding: 12px;
       }
@@ -477,6 +511,7 @@
         Pulls live schedules from the official
         <a href="https://data.sfgov.org/City-Infrastructure/Street-Sweeping-Schedule/yhqp-riqs/explore" target="_blank" rel="noreferrer">DataSF Street Sweeping Schedule</a>.
       </p>
+      <button id="locateButton" class="map-action" type="button">Show my location</button>
     </section>
 
     <section class="layout">
@@ -515,11 +550,16 @@
       blocks: [],
       selectedDay: "Tues",
       map: null,
-      layers: []
+      layers: [],
+      locationWatchId: null,
+      locationMarker: null,
+      accuracyCircle: null,
+      hasCenteredOnLocation: false
     };
 
     const els = {
       daySelect: document.querySelector("#daySelect"),
+      locateButton: document.querySelector("#locateButton"),
       selectedTitle: document.querySelector("#selectedTitle"),
       selectedSummary: document.querySelector("#selectedSummary"),
       bestList: document.querySelector("#bestList"),
@@ -566,6 +606,8 @@
         state.selectedDay = event.target.value;
         renderAll();
       });
+
+      els.locateButton.addEventListener("click", toggleLocationTracking);
     }
 
     async function fetchSchedules() {
@@ -651,7 +693,7 @@
           icon: L.divIcon({
             className: "",
             html: `<div class="curb-marker" title="${sideShortLabel(block.blockside)}"><span>${sideArrow(block.blockside)}</span></div>`,
-            iconAnchor: [16, 16]
+            iconAnchor: [12, 12]
           }),
           interactive: false
         });
@@ -800,6 +842,76 @@
 
     function rankTarget(a, b) {
       return a.block.distanceM - b.block.distanceM || startHour(a.status) - startHour(b.status);
+    }
+
+    function toggleLocationTracking() {
+      if (!("geolocation" in navigator)) {
+        els.locateButton.textContent = "Location unavailable";
+        els.locateButton.disabled = true;
+        return;
+      }
+
+      if (state.locationWatchId !== null) {
+        navigator.geolocation.clearWatch(state.locationWatchId);
+        state.locationWatchId = null;
+        state.hasCenteredOnLocation = false;
+        els.locateButton.textContent = "Show my location";
+        els.locateButton.classList.remove("active");
+        return;
+      }
+
+      els.locateButton.textContent = "Finding location...";
+      els.locateButton.classList.add("active");
+      state.locationWatchId = navigator.geolocation.watchPosition(
+        position => {
+          updateLocation(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+          els.locateButton.textContent = "Tracking location";
+        },
+        error => {
+          els.locateButton.textContent = error.code === error.PERMISSION_DENIED ? "Location blocked" : "Location failed";
+          els.locateButton.classList.remove("active");
+          if (state.locationWatchId !== null) {
+            navigator.geolocation.clearWatch(state.locationWatchId);
+            state.locationWatchId = null;
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+      );
+    }
+
+    function updateLocation(lat, lng, accuracy) {
+      const latLng = [lat, lng];
+      if (!state.locationMarker) {
+        state.locationMarker = L.circleMarker(latLng, {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: "#1a73e8",
+          fillOpacity: 1
+        })
+          .bindPopup("<div class='popup-title'>You are here</div>")
+          .addTo(state.map);
+      } else {
+        state.locationMarker.setLatLng(latLng);
+      }
+
+      if (!state.accuracyCircle) {
+        state.accuracyCircle = L.circle(latLng, {
+          radius: accuracy || 20,
+          color: "#1a73e8",
+          weight: 1,
+          fillColor: "#1a73e8",
+          fillOpacity: 0.12
+        }).addTo(state.map);
+      } else {
+        state.accuracyCircle.setLatLng(latLng);
+        state.accuracyCircle.setRadius(accuracy || 20);
+      }
+
+      if (!state.hasCenteredOnLocation) {
+        state.map.setView(latLng, Math.max(state.map.getZoom(), 17));
+        state.hasCenteredOnLocation = true;
+      }
     }
 
     function startHour(status) {
