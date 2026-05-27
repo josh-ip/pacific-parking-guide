@@ -548,7 +548,7 @@
     const state = {
       rows: [],
       blocks: [],
-      selectedDay: "Tues",
+      selectedDay: defaultParkingMorningDay(),
       map: null,
       layers: [],
       locationWatchId: null,
@@ -927,6 +927,19 @@
         Thu: "Wednesday night -> Thursday morning",
         Fri: "Thursday night -> Friday morning"
       }[morningDay];
+    }
+
+    function defaultParkingMorningDay(now = new Date()) {
+      const parkingNightDay = now.getHours() < 5 ? (now.getDay() + 6) % 7 : now.getDay();
+      return {
+        0: "Mon",
+        1: "Tues",
+        2: "Wed",
+        3: "Thu",
+        4: "Fri",
+        5: "Mon",
+        6: "Mon"
+      }[parkingNightDay];
     }
 
     function offsetLineToCurb(coordinates, blockside, meters) {
