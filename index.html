@@ -621,7 +621,7 @@
         .filter(item => item.status.kind === "prime")
         .sort(rankTarget);
 
-      targetItems.forEach((item, index) => {
+      targetItems.forEach(item => {
         const { block, status } = item;
         const offsetCoordinates = offsetLineToCurb(block.line.coordinates, block.blockside, 8);
         const latLngs = toLatLngs(offsetCoordinates);
@@ -647,18 +647,16 @@
         layer.addTo(state.map);
         state.layers.push(casing, layer);
 
-        if (index < 12) {
-          const marker = L.marker(lineMidpoint(offsetCoordinates), {
-            icon: L.divIcon({
-              className: "",
-              html: `<div class="curb-marker" title="${sideShortLabel(block.blockside)}"><span>${sideArrow(block.blockside)}</span></div>`,
-              iconAnchor: [16, 16]
-            }),
-            interactive: false
-          });
-          marker.addTo(state.map);
-          state.layers.push(marker);
-        }
+        const marker = L.marker(lineMidpoint(offsetCoordinates), {
+          icon: L.divIcon({
+            className: "",
+            html: `<div class="curb-marker" title="${sideShortLabel(block.blockside)}"><span>${sideArrow(block.blockside)}</span></div>`,
+            iconAnchor: [16, 16]
+          }),
+          interactive: false
+        });
+        marker.addTo(state.map);
+        state.layers.push(marker);
       });
     }
 
