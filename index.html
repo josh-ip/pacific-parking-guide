@@ -544,6 +544,8 @@
     const SEARCH_RADIUS_M = 400;
     const DAY_ORDER = ["Mon", "Tues", "Wed", "Thu", "Fri"];
     const DAY_LABELS = { Mon: "Monday", Tues: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
+    const PARKING_NIGHT_LABELS = { Mon: "Sunday", Tues: "Monday", Wed: "Tuesday", Thu: "Wednesday", Fri: "Thursday" };
+    const PARKING_NIGHT_JS_DAYS = { Mon: 0, Tues: 1, Wed: 2, Thu: 3, Fri: 4 };
 
     const state = {
       rows: [],
@@ -569,6 +571,7 @@
     boot();
 
     async function boot() {
+      updateOptionLabels();
       els.daySelect.value = state.selectedDay;
       initMap();
       attachEvents();
@@ -704,6 +707,7 @@
 
     function renderSidebar() {
       const day = state.selectedDay;
+      const context = scheduleContext(day);
       const classified = state.blocks.map(block => ({ block, status: classifyBlock(block, day) }));
       const targets = classified
         .filter(item => item.status.kind === "prime")
@@ -711,7 +715,7 @@
         .slice(0, 10);
 
       els.selectedTitle.textContent = `Best targets for ${nightLabel(day)}`;
-      els.selectedSummary.textContent = `${nightLabel(day)} uses ${DAY_LABELS[day]} morning sweeping. Green means the block has sweeping at 8 a.m. or later, which may make it easier to find an open overnight spot if you can move before the sign starts.`;
+      els.selectedSummary.textContent = `${DAY_LABELS[day]} morning is ${formatShortDate(context.morningDate)}, the ${ordinal(context.weekOfMonth)} ${DAY_LABELS[day]} of the month. The guide only shows sweeping rows active for that exact week.`;
       els.bestList.innerHTML = targets.length
         ? targets.map(item => blockRow(item.block, item.status)).join("")
         : "<div class='empty'>No nearby 8 a.m. or later sweeping targets found for this night.</div>";
@@ -757,7 +761,6 @@
           <div class="row-meta">${block.blockside} side</div>
           <span class="status ${status.kind}">${status.label}</span>
           <div class="row-meta">${status.detail}</div>
-          <div class="row-meta">${fullSchedule(block)}</div>
         </article>
       `;
     }
@@ -777,17 +780,17 @@
         <div class="popup-meta">${block.blockside} side - ${formatDistance(block.distanceM)}</div>
         <p><span class="status ${status.kind}">${status.label}</span></p>
         <p>${status.detail}</p>
-        <div class="popup-meta">${fullSchedule(block)}</div>
       `;
     }
 
     function classifyBlock(block, day) {
-      const todaysRows = block.rows.filter(row => row.weekday === day);
+      const context = scheduleContext(day);
+      const todaysRows = block.rows.filter(row => row.weekday === day && rowAppliesToDate(row, context.morningDate));
       if (!todaysRows.length) {
         return {
           kind: "none",
           label: "No sweep that morning",
-          detail: `No ${DAY_LABELS[day]} weekday sweep listed for this block face.`
+          detail: `No active ${DAY_LABELS[day]} sweep listed for ${formatShortDate(context.morningDate)}.`
         };
       }
 
@@ -798,17 +801,9 @@
       const bestStart = Math.min(...sortedRows.filter(row => Number(row.fromhour) >= 8).map(row => Number(row.fromhour)));
 
       if (Number.isFinite(bestStart)) {
-        return { kind: "prime", label: "8 a.m. or later target", detail: `${detail}. Move before ${formatHour(bestStart)}.` };
+        return { kind: "prime", label: "8 a.m. or later target", detail: `${formatShortDate(context.morningDate)}: ${detail}. Move before ${formatHour(bestStart)}.` };
       }
-      return { kind: "none", label: "No useful sweep timing", detail };
-    }
-
-    function fullSchedule(block) {
-      return block.rows
-        .slice()
-        .sort((a, b) => DAY_ORDER.indexOf(a.weekday) - DAY_ORDER.indexOf(b.weekday) || Number(a.fromhour) - Number(b.fromhour))
-        .map(scheduleText)
-        .join("; ");
+      return { kind: "none", label: "No useful sweep timing", detail: `${formatShortDate(context.morningDate)}: ${detail}` };
     }
 
     function scheduleText(row) {
@@ -920,13 +915,8 @@
     }
 
     function nightLabel(morningDay) {
-      return {
-        Mon: "Sunday night -> Monday morning",
-        Tues: "Monday night -> Tuesday morning",
-        Wed: "Tuesday night -> Wednesday morning",
-        Thu: "Wednesday night -> Thursday morning",
-        Fri: "Thursday night -> Friday morning"
-      }[morningDay];
+      const context = scheduleContext(morningDay);
+      return `${PARKING_NIGHT_LABELS[morningDay]} night (${formatShortDate(context.parkingDate)}) -> ${DAY_LABELS[morningDay]} morning (${formatShortDate(context.morningDate)})`;
     }
 
     function defaultParkingMorningDay(now = new Date()) {
@@ -940,6 +930,60 @@
         5: "Mon",
         6: "Mon"
       }[parkingNightDay];
+    }
+
+    function updateOptionLabels() {
+      DAY_ORDER.forEach(day => {
+        const option = els.daySelect.querySelector(`option[value="${day}"]`);
+        if (option) option.textContent = nightLabel(day);
+      });
+    }
+
+    function scheduleContext(morningDay, now = new Date()) {
+      const base = effectiveParkingDate(now);
+      const parkingDate = nextDateForWeekday(PARKING_NIGHT_JS_DAYS[morningDay], base);
+      const morningDate = addDays(parkingDate, 1);
+      return {
+        parkingDate,
+        morningDate,
+        weekOfMonth: occurrenceInMonth(morningDate)
+      };
+    }
+
+    function effectiveParkingDate(now) {
+      const date = new Date(now);
+      if (date.getHours() < 5) date.setDate(date.getDate() - 1);
+      date.setHours(12, 0, 0, 0);
+      return date;
+    }
+
+    function nextDateForWeekday(jsDay, baseDate) {
+      const date = new Date(baseDate);
+      const delta = (jsDay - date.getDay() + 7) % 7;
+      date.setDate(date.getDate() + delta);
+      return date;
+    }
+
+    function addDays(date, days) {
+      const copy = new Date(date);
+      copy.setDate(copy.getDate() + days);
+      return copy;
+    }
+
+    function occurrenceInMonth(date) {
+      return Math.ceil(date.getDate() / 7);
+    }
+
+    function rowAppliesToDate(row, date) {
+      return row[`week${occurrenceInMonth(date)}`] === "1";
+    }
+
+    function formatShortDate(date) {
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
+
+    function ordinal(value) {
+      return ["", "1st", "2nd", "3rd", "4th", "5th"][value] || `${value}th`;
     }
 
     function offsetLineToCurb(coordinates, blockside, meters) {
